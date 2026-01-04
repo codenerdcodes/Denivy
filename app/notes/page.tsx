@@ -13,7 +13,6 @@ type Note = {
 const STORAGE_KEY = "denivy_notes_v2";
 
 function uid() {
-  // good-enough unique id for local notes
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
@@ -21,33 +20,39 @@ function formatTime(ts: number) {
   return new Date(ts).toLocaleString();
 }
 
+function snippet(text: string, max = 70) {
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  if (!oneLine) return "No content yet…";
+  return oneLine.length > max ? oneLine.slice(0, max) + "…" : oneLine;
+}
+
 export default function NotesPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeId, setActiveId] = useState<string>("");
   const [query, setQuery] = useState("");
 
-  // Load from localStorage
+  // Load
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Note[];
       setNotes(parsed);
-      if (parsed.length) setActiveId(parsed[0].id);
+      setActiveId(parsed[0]?.id ?? "");
       return;
     }
 
-    // First run: create a starter note
     const first: Note = {
       id: uid(),
-      title: "Welcome note",
-      body: "Type anything here…\n\n• Groceries\n• Reminders\n• Ideas",
+      title: "Welcome",
+      body: "This is your Notes page.\n\nMake a new note from the sidebar.",
       updatedAt: Date.now(),
     };
+
     setNotes([first]);
     setActiveId(first.id);
   }, []);
 
-  // Persist notes (debounced)
+  // Save (debounced)
   useEffect(() => {
     const t = setTimeout(() => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
@@ -55,22 +60,26 @@ export default function NotesPage() {
     return () => clearTimeout(t);
   }, [notes]);
 
-  const activeNote = useMemo(
-    () => notes.find((n) => n.id === activeId),
-    [notes, activeId]
-  );
+  const sortedNotes = useMemo(() => {
+    return [...notes].sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [notes]);
 
   const filteredNotes = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return notes;
+    if (!q) return sortedNotes;
 
-    return notes.filter((n) => {
+    return sortedNotes.filter((n) => {
       return (
         n.title.toLowerCase().includes(q) ||
         n.body.toLowerCase().includes(q)
       );
     });
-  }, [notes, query]);
+  }, [sortedNotes, query]);
+
+  const activeNote = useMemo(
+    () => notes.find((n) => n.id === activeId),
+    [notes, activeId]
+  );
 
   function createNote() {
     const newNote: Note = {
@@ -84,11 +93,11 @@ export default function NotesPage() {
   }
 
   function deleteNote(id: string) {
-    setNotes((prev) => prev.filter((n) => n.id !== id));
+    const remaining = notes.filter((n) => n.id !== id);
+    setNotes(remaining);
+
     if (activeId === id) {
-      // pick next note (or empty)
-      const remaining = notes.filter((n) => n.id !== id);
-      setActiveId(remaining[0]?.id ?? "");
+      setActiveId(remaining.sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id ?? "");
     }
   }
 
@@ -96,9 +105,7 @@ export default function NotesPage() {
     if (!activeId) return;
     setNotes((prev) =>
       prev.map((n) =>
-        n.id === activeId
-          ? { ...n, ...patch, updatedAt: Date.now() }
-          : n
+        n.id === activeId ? { ...n, ...patch, updatedAt: Date.now() } : n
       )
     );
   }
@@ -121,32 +128,30 @@ export default function NotesPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={createNote}
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
-            >
-              + New note
-            </button>
-
-            <Link
-              href="/"
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
-            >
-              ← Back
-            </Link>
-          </div>
+          <Link
+            href="/"
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
+          >
+            ← Back
+          </Link>
         </div>
 
         {/* Layout */}
         <div className="mt-6 grid gap-4 md:grid-cols-[320px_1fr]">
           {/* Sidebar */}
           <aside className="rounded-2xl border border-white/10 bg-white/5 p-3">
+            <button
+              onClick={createNote}
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
+            >
+              + New note
+            </button>
+
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search notes..."
-              className="w-full rounded-xl border border-white/10 bg-zinc-950/40 px-3 py-2 text-sm outline-none placeholder:text-zinc-500"
+              className="mt-3 w-full rounded-xl border border-white/10 bg-zinc-950/40 px-3 py-2 text-sm outline-none placeholder:text-zinc-500"
             />
 
             <div className="mt-3 space-y-2">
@@ -169,7 +174,7 @@ export default function NotesPage() {
                       ].join(" ")}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div>
+                        <div className="min-w-0">
                           <div className="font-semibold truncate">
                             {n.title || "Untitled"}
                           </div>
@@ -183,7 +188,7 @@ export default function NotesPage() {
                             e.stopPropagation();
                             deleteNote(n.id);
                           }}
-                          className="rounded-lg border border-white/10 px-2 py-1 text-xs text-zinc-300 hover:bg-white/10"
+                          className="shrink-0 rounded-lg border border-white/10 px-2 py-1 text-xs text-zinc-300 hover:bg-white/10"
                           role="button"
                           aria-label="Delete note"
                           title="Delete note"
@@ -192,8 +197,8 @@ export default function NotesPage() {
                         </span>
                       </div>
 
-                      <div className="mt-2 line-clamp-2 text-sm text-zinc-400">
-                        {n.body?.trim() ? n.body : "No content yet…"}
+                      <div className="mt-2 text-sm text-zinc-400">
+                        {snippet(n.body)}
                       </div>
                     </button>
                   );
